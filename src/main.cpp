@@ -54,11 +54,8 @@ int main() {
 
   int lane = 1; // middle lane within the Frenet space.
   
-  // Reference velocity for the car.
-  double ref_vel = 49.5; // In miles per hour.
-
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy, &lane, &ref_vel]
+               &map_waypoints_dx,&map_waypoints_dy, &lane]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -97,9 +94,6 @@ int main() {
 
           json msgJson;
 
-          vector<double> next_x_vals;
-          vector<double> next_y_vals;
-
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
            *   sequentially every .02 seconds
@@ -111,7 +105,43 @@ int main() {
           vector<double> ptsx;
           vector<double> ptsy;
 
+          // Reference velocity for the car.
+          double ref_vel = 49.5; // In miles per hour.
+
           int prev_size = previous_path_x.size();
+
+          if (prev_size > 0)
+          {
+            // For planning purposes, we go to the place in time where the last
+            // predicted path point would be. Later in the code we'll do the same
+            // for the first other other in the same lane.
+            car_s = end_path_s; 
+          }
+
+          bool too_close = false;
+
+          // Find ref_v to use.
+          for (int i = 0; i < sensor_fusion.size(); ++i){
+            // Car is in my lane .
+            float d = sensor_fusion[i][6]; // 6 is position of the d-coordinate in Frenet.
+            if (d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2)){
+              double vx = sensor_fusion[i][3]; // vx component of the other car speed.
+              double vy = sensor_fusion[i][4]; // vy component of the other car speed.
+              double check_speed = sqrt(vx * vx + vy * vy);
+              double check_car_s = sensor_fusion[i][5];
+
+              // If using previous points can project s value out in time for the
+              // whole duration of 'previous_path' points.
+              check_car_s += static_cast<double>(prev_size) * 0.02 * check_speed;
+
+              // Check the condition when ego-car position and distance to the car ahead.
+              // IF the car is ahead of us and distance between them is less then 30 meters.
+              if ((check_car_s > car_s) && (check_car_s - car_s < 30)){
+                // Lower the velocity so that we don't crash into the car ahead.
+                ref_vel = 29.5; // Miles per hour unit.
+              }
+            }
+          }
 
           // Reference x, y, and yaw for the car.
           double ref_x = car_x;
@@ -133,12 +163,12 @@ int main() {
           }
           else{
             // Use previous path's end point as starting reference.
-            ref_x = previous_path_x[prev_size -1];
-            ref_y = previous_path_y[prev_size -1];
+            ref_x = previous_path_x[prev_size - 1];
+            ref_y = previous_path_y[prev_size - 1];
 
             double ref_x_prev = previous_path_x[prev_size - 2];
             double ref_y_prev = previous_path_y[prev_size - 2];
-            double ref_raw = atan2(ref_y - ref_y_prev, ref_x - ref_x_prev);
+            ref_yaw = atan2(ref_y - ref_y_prev, ref_x - ref_x_prev);
             
             // Use the previous two points as the begining of the points list
             // on which to calculate the spline.
@@ -196,6 +226,9 @@ int main() {
           // This way it minimizes the instant velocity and acceleration.
           spl.set_points(ptsx, ptsy);
           
+          vector<double> next_x_vals;
+          vector<double> next_y_vals;
+
           for(int i = 0; i < prev_size; ++i){
             next_x_vals.push_back(previous_path_x[i]);
             next_y_vals.push_back(previous_path_y[i]);
@@ -211,7 +244,7 @@ int main() {
 
           // Fill up the rest of our path planner after filling it with prevoius
           // points, here we will always output 50 points
-          for (int i = 1; i = 50 - prev_size; ++i){
+          for (int i = 1; i <= 50 - prev_size; ++i){
             // 2.237 is conversion from miles an hour to meters per second.
             double N = (target_dist / (0.02 * ref_vel / 2.237));
             
@@ -225,7 +258,7 @@ int main() {
 
             // Rotate back to global coordinate system after rotating it earlier.
             x_point = (x_ref * cos(ref_yaw - 0) - y_ref * sin(ref_yaw - 0));
-            x_point = (x_ref * sin(ref_yaw - 0) + y_ref * cos(ref_yaw - 0));
+            y_point = (x_ref * sin(ref_yaw - 0) + y_ref * cos(ref_yaw - 0));
 
             x_point += ref_x;
             y_point += ref_y;
