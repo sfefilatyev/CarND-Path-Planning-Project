@@ -234,24 +234,6 @@ int main() {
             next_y_vals.push_back(y_point);
           }
 
-          /*
-          double dist_inc = 0.5;
-          vector<double>next_y_vals_raw;
-          for (int i = 0; i < 50; ++i) {
-            double next_s = car_s + (i + 1) * dist_inc;
-            double next_d = 6;
-            vector<double> next_point = getXY(
-              next_s,
-              next_d,
-              map_waypoints_s,
-              map_waypoints_x,
-              map_waypoints_y
-              );
-            next_x_vals.push_back(next_point[0]);
-            next_y_vals_raw.push_back(next_point[1]);
-          }
-          */
-
           /** TODO END
            * 
            */
